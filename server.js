@@ -62,3 +62,50 @@ Buat 5 rekomendasi per field berikut dalam format JSON:
 
     // Panggil OpenAI pakai SDK
     const response = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',   // ganti ke model lain kalau perlu (misal gpt-4.1)
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      temperature: 0.7,
+      max_tokens: 1000,
+    });
+
+    const content = response.choices?.[0]?.message?.content || '';
+    const match = content.match(/\{[\s\S]*\}/);
+    if (!match) {
+      throw new Error('OpenAI response bukan JSON valid');
+    }
+
+    const recommendations = JSON.parse(match[0]);
+
+    res.json({
+      success: true,
+      recommendations,
+    });
+  } catch (err) {
+    console.error('❌ Error di /api/recommendations:', err);
+    res.status(500).json({
+      error: 'Gagal generate rekomendasi',
+      details: err.message,
+    });
+  }
+});
+
+// ============================================
+// START SERVER
+// ============================================
+app.listen(PORT, () => {
+  console.log(`
+╔════════════════════════════════════════╗
+║  🎬 VEO 3 BACKEND SERVER RUNNING      ║
+║  Port: ${PORT}                        ║
+║  Siap menerima request dari frontend  ║
+╚════════════════════════════════════════╝
+  `);
+  console.log(`
+Test endpoint di browser:
+- Health check: http://localhost:${PORT}/health
+- Recommendation: POST ke http://localhost:${PORT}/api/recommendations
+  `);
+});
