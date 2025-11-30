@@ -24,92 +24,67 @@ const openai = new OpenAI({
 // ============================================
 // ENDPOINT 1: Test Health Check
 // ============================================
-app.get('/health', (req, res) => {
-  res.json({ status: 'Backend is running ✅' });
-});
-
-// ============================================
-// ENDPOINT 2: Generate Recommendations
-// ============================================
 app.post('/api/recommendations', async (req, res) => {
   try {
-    // 1. Validasi input
     const { description } = req.body;
-    
     if (!description || description.trim().length === 0) {
-      return res.status(400).json({ 
-        error: 'Description harus diisi' 
-      });
+      return res.status(400).json({ error: 'Description harus diisi' });
     }
 
-    // 2. Buat prompt untuk OpenAI
-    const systemPrompt = `Kamu adalah expert video prompt specialist untuk Google Veo 3. 
-Tugas kamu adalah menganalisa deskripsi video dan memberikan 5 rekomendasi untuk setiap field.
-Jawab HANYA dalam format JSON valid, tanpa teks tambahan.
-Setiap field berisi array dengan 5 rekomendasi string.`;
-
-    const userPrompt = `Berdasarkan deskripsi video ini:
-
-"${description}"
-
-Buatkan 5 rekomendasi TERBAIK untuk setiap field di bawah. 
-Setiap rekomendasi harus relevan, unik, dan professional.
-
-Format jawaban (HANYA JSON, tidak ada teks lain):
+    const systemPrompt = `Kamu adalah expert video prompt specialist untuk Google Veo 3.
+Jawab HANYA dengan JSON valid.`;
+    const userPrompt = `Berdasarkan deskripsi ini: "${description}"
+buat 5 rekomendasi per field berikut dalam format JSON:
 {
-  "scene_setting": ["opsi 1", "opsi 2", "opsi 3", "opsi 4", "opsi 5"],
-  "lighting_type": ["opsi 1", "opsi 2", "opsi 3", "opsi 4", "opsi 5"],
-  "subject_type": ["opsi 1", "opsi 2", "opsi 3", "opsi 4", "opsi 5"],
-  "subject_action": ["opsi 1", "opsi 2", "opsi 3", "opsi 4", "opsi 5"],
-  "camera_angle": ["opsi 1", "opsi 2", "opsi 3", "opsi 4", "opsi 5"],
-  "motion_pacing": ["opsi 1", "opsi 2", "opsi 3", "opsi 4", "opsi 5"],
-  "aesthetic": ["opsi 1", "opsi 2", "opsi 3", "opsi 4", "opsi 5"],
-  "color_palette": ["opsi 1", "opsi 2", "opsi 3", "opsi 4", "opsi 5"],
-  "audio_type": ["opsi 1", "opsi 2", "opsi 3", "opsi 4", "opsi 5"]
+  "scene_setting": ["..."],
+  "lighting_type": ["..."],
+  "subject_type": ["..."],
+  "subject_action": ["..."],
+  "camera_angle": ["..."],
+  "motion_pacing": ["..."],
+  "aesthetic": ["..."],
+  "color_palette": ["..."],
+  "audio_type": ["..."]
 }`;
 
-    // 3. Call OpenAI API
-    console.log('📤 Mengirim request ke OpenAI...');
-    
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4-turbo', // Bisa pakai gpt-3.5-turbo untuk lebih murah
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt }
-      ],
-      temperature: 0.7, // Sedikit creative tapi tetap konsisten
-      max_tokens: 1000,
+    // Panggil OpenAI langsung via fetch
+    const apiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',        // bisa diganti gpt-4.1 / gpt-3.5-turbo tergantung akunmu
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        temperature: 0.7,
+        max_tokens: 1000,
+      }),
     });
 
-    // 4. Parse response JSON dari OpenAI
-    const content = response.choices.message.content;
-    console.log('✅ Response dari OpenAI:', content);
-    
-    // Extract JSON dari response (dalam case ada teks tambahan)
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
+    const data = await apiRes.json();
+    if (!apiRes.ok) {
+      console.error('OpenAI error:', data);
+      return res.status(500).json({ error: 'OpenAI API error', details: data });
+    }
+
+    const content = data.choices?.[0]?.message?.content || '';
+    const match = content.match(/\{[\s\S]*\}/);
+    if (!match) {
       throw new Error('OpenAI response bukan JSON valid');
     }
-    
-    const recommendations = JSON.parse(jsonMatch);
 
-    // 5. Kirim response ke frontend
-    res.json({
-      success: true,
-      recommendations: recommendations,
-      message: 'Rekomendasi berhasil dibuat'
-    });
-
-  } catch (error) {
-    // Error handling
-    console.error('❌ Error:', error.message);
-    
-    res.status(500).json({
-      error: 'Gagal generate rekomendasi',
-      details: error.message
-    });
+    const recommendations = JSON.parse(match[0]);
+    res.json({ success: true, recommendations });
+  } catch (err) {
+    console.error('❌ Error di /api/recommendations:', err);
+    res.status(500).json({ error: 'Gagal generate rekomendasi', details: err.message });
   }
 });
+
 
 // ============================================
 // START SERVER
